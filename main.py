@@ -2,13 +2,25 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sympy as sp
 import argparse
+import math
 import cv2
 import os
 
 from tqdm import tqdm
 
 
+def angle_by_gradient_difference(x1: float, y1: float, x2: float, y2: float,
+                                 x3: float, y3: float) -> list:
+    theta1 = math.degrees(math.atan((y3-y2)/(x3-x2)))
+    theta2 = math.degrees(math.atan((y1-y2)/(x1-x2)))
+    theta = abs(theta2 - theta1)
+
+    return theta
+
+
 def main(args):
+    print(f"===== k: {args.k}, l: {args.l} =====")
+
     # Fix the seed for reproducibility
     np.random.seed(2024)
 
@@ -36,11 +48,11 @@ def main(args):
     z_circle = np.zeros(1000) + h
     circle = np.array([x_circle, y_circle, z_circle]).T
 
-    theta_array = np.linspace(0, 89, 90, dtype=int)
-    theta_array = np.linspace(0, 10, 11, dtype=int)
+    theta_array = np.linspace(0, 90, 90, dtype=int, endpoint=False)
+    # theta_array = np.linspace(0, 90, 9, dtype=int, endpoint=False)
     phi_array = np.linspace(0, 0, 1, dtype=int)
 
-    calculated_theta = []
+    calculated_theta, liaw_theta = [], []
     os.makedirs('visualization', exist_ok=True)
 
     # for theta in tqdm(theta_array):
@@ -94,7 +106,6 @@ def main(args):
             # Calculate least square ellipse from the projection using cv2 fitellipse
             ellipse = cv2.fitEllipse(np.array(landmark_proj[:, :2], dtype=np.float32))
             (ellipse_x, ellipse_y), (minor, major), angle = ellipse
-            angle += 90
 
             # Reparametrize the ellipse
             a, b = major / 2, minor / 2
@@ -102,94 +113,161 @@ def main(args):
             # Create an equation for ellipse using sympy
             x, y = sp.symbols('x y')
 
-            # Equation of the ellipse (rotated and translated)
-            ellipse_eq = ((x-k)*sp.cos(angle) + (y-l)*sp.sin(angle))**2 / a**2 + ((x-k)*sp.sin(angle) - (y-l)*sp.cos(angle))**2 / b**2 - 1
+            # Ellipse equation rotated by theta, updating a and b
+            ellipse_eq = \
+                ((x-ellipse_x)*sp.cos(np.radians(angle+90)) + (y-ellipse_y)*sp.sin(np.radians(angle+90)))**2 / a**2 + \
+                ((x-ellipse_x)*sp.sin(np.radians(angle+90)) - (y-ellipse_y)*sp.cos(np.radians(angle+90)))**2 / b**2 - 1
 
-            # Simplify the equation
-            ellipse_eq_simplified = sp.simplify(ellipse_eq)
+            # Substitute x = h
+            substituted_eq = ellipse_eq.subs(x, ellipse_x)
 
-            # Substitute x or y into the ellipse equation
-            substituted_eq_x = ellipse_eq.subs(x, k) 
-            substituted_eq_y = ellipse_eq.subs(y, l)
-
-            # Solve the equation for x or y
-            x_solutions = sp.solve(substituted_eq_x, y)
-            y_solutions = sp.solve(substituted_eq_y, x)
+            # Solve the equation for y
+            y_solutions = sp.solve(substituted_eq, y)
 
             # Calculation of L 
-            # L = abs(float(y_solutions[0]) - float(y_solutions[1]))
             L = abs(float(y_solutions[0]) - float(y_solutions[1]))
 
-            # # Calculation of theta_ellipse
+            # Calculation of theta_ellipse
             left = (H-h)**2 / r**2
-            right = 4*H**2 / L**2
-            right = 4*H**2 / major**2
-            
+            right = 4*H**2 / L**2            
             left_sub_right = 0 if abs(left - right) < 1e-4 else left - right
+
             theta_ellipse = np.degrees(np.arcsin(np.sqrt(left_sub_right)))
             calculated_theta.append(theta_ellipse)
 
-            print(f'Theta: {theta}, Phi: {phi}, Calculated Theta: {theta_ellipse}')
-            print(f'Ellipse: Center: ({ellipse_x}, {ellipse_y}), Major: {a}, Minor: {b}, Angle: {angle}')
-            print(f'Left: {left}, Right: {right}, Left - Right: {left_sub_right}')
+            print(f'k: {k}, l: {l}, Theta: {theta}, Phi: {phi}, Calculated Theta: {theta_ellipse}')
+            # print(f'Center: ({ellipse_x:.2f}, {ellipse_y:.2f}), Major: {a:.2f}, Minor: {b:.2f}, Angle: {angle:.2f}, L: {L:.2f}')
+            # print(f'Equation of the ellipse: {ellipse_eq_simplified}')
+            # print(f'Left: {left}, Right: {right}, Left - Right: {left_sub_right}')
 
-            # Visualize it in 3D space
-            fig = plt.figure(figsize=(10, 10))
-            ax = fig.add_subplot(111, projection='3d')
+            # Direction vectors for the major and minor axes
+            major_axis_direction = np.array([np.cos(np.radians(angle+90)), np.sin(np.radians(angle+90))])
+            minor_axis_direction = np.array([-np.sin(np.radians(angle+90)), np.cos(np.radians(angle+90))])  # Perpendicular to the major axis
 
-            # Plot the camera
-            ax.scatter(0, 0, H, c='g', marker='o', label='Camera')
+            # Vertex points (endpoints of the major axis)
+            center = np.array([ellipse_x, ellipse_y])
+            vertex_point_1 = center + a * major_axis_direction
+            vertex_point_2 = center - a * major_axis_direction
 
-            # Plot the object
-            ax.scatter(landmark_theta_phi[:, 0], landmark_theta_phi[:, 1], landmark_theta_phi[:, 2], c='r', marker='o', label='Object')
+            # Co-vertex points (endpoints of the minor axis)
+            co_vertex_point_1 = center + b * minor_axis_direction
+            co_vertex_point_2 = center - b * minor_axis_direction
 
-            # Plot the projection
-            ax.scatter(landmark_proj[:, 0], landmark_proj[:, 1], landmark_proj[:, 2], c='b', marker='x', label='Projection')
+            angle_between_pixels = angle_by_gradient_difference(
+                vertex_point_1[0], vertex_point_1[1] , co_vertex_point_1[0], co_vertex_point_1[1], co_vertex_point_2[0], co_vertex_point_2[1]
+            )
+            angle_between_pixels = angle_by_gradient_difference(
+                co_vertex_point_1[0], co_vertex_point_1[1] , vertex_point_1[0], vertex_point_1[1], vertex_point_2[0], vertex_point_2[1]
+            )
+            liaw_angle = np.arcsin(np.tan(np.radians(angle_between_pixels)))
+            liaw_theta.append(90-np.degrees(liaw_angle))
+            # print(f'Liaw Angle: {90-np.degrees(liaw_angle):.2f}')
 
-            # Plot the line between the camera, points and their projection
-            for i in range(n_landmarks):
-                ax.plot(
-                    [0, landmark_theta_phi[i, 0]], [0, landmark_theta_phi[i, 1]], [H, landmark_theta_phi[i, 2]], 
-                    color='black', linewidth=0.5
-                )
-                ax.plot(
-                    [landmark_theta_phi[i, 0], landmark_proj[i, 0]], [landmark_theta_phi[i, 1], landmark_proj[i, 1]], [landmark_theta_phi[i, 2], 0], 
-                    color='black', linewidth=0.5
-                )
+            if args.figure:
+                # Visualize it in 3D space
+                fig = plt.figure(figsize=(10, 10))
+                ax = fig.add_subplot(111, projection='3d')
 
-            # Plot circle
-            ax.plot(circle_theta_phi[:, 0], circle_theta_phi[:, 1], circle_theta_phi[:, 2], color='black', label='Circle')
+                # Plot the camera
+                ax.scatter(0, 0, H, c='g', marker='o', label='Camera')
 
-            # Plot the ellipse
-            ellipse = cv2.ellipse2Poly((int(ellipse_x), int(ellipse_y)), (int(a), int(b)), int(angle), 0, 360, 1)
-            ax.plot(ellipse[:, 0], ellipse[:, 1], 0, color='orange', linewidth=2, label='Ellipse')
+                # Plot the object
+                ax.scatter(landmark_theta_phi[:, 0], landmark_theta_phi[:, 1], landmark_theta_phi[:, 2], c='r', marker='o', label='Object')
 
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            ax.set_xlim(-100, 100)
-            ax.set_ylim(-100, 100)
-            ax.set_zlim(0, 1000)
-            ax.set_title(f'Theta: {theta}, Phi: {phi}, Calculated Theta: {theta_ellipse:.2f}')
-            ax.legend()
+                # Plot circle
+                ax.plot(circle_theta_phi[:, 0], circle_theta_phi[:, 1], circle_theta_phi[:, 2], color='black')
 
-            # Save the figure
-            plt.savefig(f'visualization/theta_{theta}_phi_{phi}.png')
-            print()
+                # Plot the projection
+                ax.scatter(landmark_proj[:, 0], landmark_proj[:, 1], landmark_proj[:, 2], c='b', marker='x', label='Projection')
 
-    # Draw a qq plot to compare the calculated theta and the actual theta
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax.scatter(theta_array, calculated_theta, color='blue', label='Calculated Theta', s=5)
-    ax.plot([0, 89], [0, 89], color='red', label='Ground Truth Theta')
-    ax.legend()
-    ax.set_xlim(-1, 91)
-    ax.set_ylim(-1, 90)
-    ax.set_xlabel('Ground Truth Theta')
-    ax.set_ylabel('Calculated Theta')
-    ax.set_title(f'QQ Plot when k = {k}, l = {l}')
-    ax.set_aspect('equal', adjustable='datalim')
-    # plt.show()
-    plt.savefig(f'Figure/qq_plot_k_{k}_l_{l}.png')
+                # Plot the line between the camera, points and their projection
+                for i in range(n_landmarks):
+                    ax.plot(
+                        [0, landmark_theta_phi[i, 0]], [0, landmark_theta_phi[i, 1]], [H, landmark_theta_phi[i, 2]], 
+                        color='black', linewidth=0.5
+                    )
+                    ax.plot(
+                        [landmark_theta_phi[i, 0], landmark_proj[i, 0]], [landmark_theta_phi[i, 1], landmark_proj[i, 1]], [landmark_theta_phi[i, 2], 0], 
+                        color='black', linewidth=0.5
+                    )
+
+                # Plot line between y_solutions
+                ax.plot([ellipse_x, ellipse_x], [float(y_solutions[0]), float(y_solutions[1])], [0, 0], color='red', linewidth=2)          
+
+                # Plot an ellipse
+                rotation_matrix_ellipse = np.array([
+                    [np.cos(np.radians(angle+90)), -np.sin(np.radians(angle+90))],
+                    [np.sin(np.radians(angle+90)), np.cos(np.radians(angle+90))]
+                ])
+
+                t = np.linspace(0, 2 * np.pi, 1000)
+                ellipse_point_x = ellipse_x + a * np.cos(t)
+                ellipse_point_y = ellipse_y + b * np.sin(t)
+
+                ellipse_point_rotated = rotation_matrix_ellipse @ np.vstack((ellipse_point_x - ellipse_x, ellipse_point_y - ellipse_y))
+                x_ellipse_rotated = ellipse_point_rotated[0, :] + ellipse_x
+                y_ellipse_rotated = ellipse_point_rotated[1, :] + ellipse_y
+                z_ellipse_rotated = np.zeros(y_ellipse_rotated.shape)
+
+                ax.plot(x_ellipse_rotated, y_ellipse_rotated, z_ellipse_rotated, color='orange', label='Ellipse')
+
+                # Plot the intersection points
+                ax.scatter([ellipse_x, ellipse_x], [float(y_solutions[0]), float(y_solutions[1])], [0, 0], color='purple', zorder=5, label='Intersection Points')
+
+                # Plot the line between the intersection points
+                ax.plot([ellipse_x, ellipse_x], [float(y_solutions[0]), float(y_solutions[1])], [0, 0], color='purple', linewidth=2)
+
+                # # Plot the vertex and co-vertex points in black
+                # ax.scatter(vertex_point_1[0], vertex_point_1[1], 0, color='black', marker='x', label='Vertex Point')
+                # ax.scatter(vertex_point_2[0], vertex_point_2[1], 0, color='black', marker='x')
+                # ax.scatter(co_vertex_point_1[0], co_vertex_point_1[1], 0, color='black', marker='x', label='Co-vertex Point')
+                # ax.scatter(co_vertex_point_2[0], co_vertex_point_2[1], 0, color='black', marker='x')
+
+                ax.set_xlabel('X')
+                ax.set_ylabel('Y')
+                ax.set_zlabel('Z')
+                ax.set_xlim(-500, 500)
+                ax.set_ylim(-500, 500)
+                ax.set_zlim(0, 1000)
+                ax.set_title(f'Theta: {theta}, Phi: {phi}, Calculated Theta: {theta_ellipse:.2f}')
+                ax.legend()
+
+                # Save the figure
+                plt.savefig(f'visualization/k_{k}_l_{l}_theta_{theta}_phi_{phi}.png', bbox_inches='tight', pad_inches=0)
+                print()
+            else:
+                print()
+
+    if args.graph:
+        # Draw a qq plot to compare the calculated theta and the actual theta
+        fig, ax = plt.subplots(figsize=(8, 8))
+        ax.scatter(theta_array, calculated_theta, color='blue', label='Calculated Theta', s=5)
+        ax.plot([0, 89], [0, 89], color='red', label='Ground Truth Theta')
+        ax.legend()
+        ax.set_xlim(-1, 91)
+        ax.set_ylim(-1, 91)
+        ax.set_xlabel('Ground Truth Theta')
+        ax.set_ylabel('Calculated Theta')
+        ax.set_title(f'QQ Plot when k = {k}, l = {l}')
+        ax.set_aspect('equal', adjustable='datalim')
+        # plt.show()
+        plt.savefig(f'Figure/qq_plot_k_{k}_l_{l}.png', bbox_inches='tight')
+
+        # Draw a qq plot to compare the calculated theta and the actual theta and Liaw's theta
+        fig, ax = plt.subplots(figsize=(8, 8))
+        ax.scatter(theta_array, calculated_theta, color='blue', label='Proposed', s=5)
+        ax.scatter(theta_array, liaw_theta, color='green', label='Liaw et al.', s=5)
+        ax.plot([0, 89], [0, 89], color='red', label='Ground Truth Theta')
+        ax.legend()
+        ax.set_xlim(-1, 91)
+        ax.set_ylim(-1, 91)
+        ax.set_xlabel('Ground Truth Theta')
+        ax.set_ylabel('Calculated Theta')
+        ax.set_title(f'QQ Plot when k = {k}, l = {l}')
+        ax.set_aspect('equal', adjustable='datalim')
+        # plt.show()
+        plt.savefig(f'Figure/qq_plot_k_{k}_l_{l}_with_liaw.png', bbox_inches='tight')
+
 
 
 if __name__ == '__main__':
@@ -203,6 +281,10 @@ if __name__ == '__main__':
     parser.add_argument('--r', '--object_radius', type=int, default=30, help='Radius (mm) of the object')
     parser.add_argument('--k', '--translation_k', type=int, default=0, help='Translation of the object in the x-axis')
     parser.add_argument('--l', '--translation_l', type=int, default=0, help='Translation of the object in the y-axis')
+
+    # parameters for visualization
+    parser.add_argument('--graph', action='store_true', help='Whether to show the graph')
+    parser.add_argument('--figure', action='store_true', help='Whether to show the figure')
 
     args = parser.parse_args()
 
