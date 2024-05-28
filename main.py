@@ -43,10 +43,10 @@ def main(args):
     theta_array = np.linspace(0, 90, 90, dtype=int, endpoint=False)
     theta_array = np.linspace(0, 90, 9, dtype=int, endpoint=False)
     phi_array = np.linspace(0, 0, 1, dtype=int)
-    # phi_array = np.linspace(0, 360, 9, dtype=int, endpoint=False)
+    phi_array = np.linspace(0, 360, 9, dtype=int, endpoint=False)
 
     for phi in phi_array:
-        os.makedirs(f'visualization_phi_{phi}', exist_ok=True)
+        os.makedirs(f'visualization/phi_{phi}', exist_ok=True)
         
         calculated_theta, liaw_theta = [], []
         for theta in theta_array:
@@ -114,7 +114,7 @@ def main(args):
             ellipse_reverse = cv2.fitEllipse(np.array(rotated_landmark_proj[:, :2], dtype=np.float32))
             (ellipse_x_reverse, ellipse_y_reverse), (minor_reverse, major_reverse), angle_reverse = ellipse_reverse
 
-            # Reparametrize the ellipse
+            # Reparametrize the ellipse's axis values
             a, b = major / 2, minor / 2
 
             # Create an equation for ellipse using sympy
@@ -122,8 +122,8 @@ def main(args):
 
             # Ellipse equation rotated by theta, updating a and b
             ellipse_eq = \
-                ((x-ellipse_x_reverse)*sp.cos(np.radians(angle+90)) + (y-ellipse_y_reverse)*sp.sin(np.radians(angle_reverse+90)))**2 / a**2 + \
-                ((x-ellipse_x_reverse)*sp.sin(np.radians(angle+90)) - (y-ellipse_y_reverse)*sp.cos(np.radians(angle_reverse+90)))**2 / b**2 - 1
+                ((x-ellipse_x_reverse)*sp.cos(np.radians(angle_reverse+90)) + (y-ellipse_y_reverse)*sp.sin(np.radians(angle_reverse+90)))**2 / a**2 + \
+                ((x-ellipse_x_reverse)*sp.sin(np.radians(angle_reverse+90)) - (y-ellipse_y_reverse)*sp.cos(np.radians(angle_reverse+90)))**2 / b**2 - 1
 
             # Substitute x = h
             substituted_eq = ellipse_eq.subs(x, ellipse_x_reverse)
@@ -147,14 +147,14 @@ def main(args):
 
             # Perform Liaw et al. 
             liaw_angle, vertex_point_1, vertex_point_2, co_vertex_point_1, co_vertex_point_2 = liaw_et_al(
-                ellipse_x_reverse, ellipse_y_reverse, a, b, angle
+                ellipse_x_reverse, ellipse_y_reverse, a, b, angle_reverse
             )
             liaw_theta.append(liaw_angle)
             # print(f'Liaw Angle: {90-np.degrees(liaw_angle):.2f}')
 
             # Perform Expectation Maximization Algorithm
             # https://ieeexplore.ieee.org/document/543975
-            # expectation_maximization()
+            # expectation_maximization(landmark_proj)
 
             if args.figure:
                 # Visualize it in 3D space
@@ -297,7 +297,7 @@ def main(args):
 
                 # Save the figure
                 plt.savefig(
-                    f'visualization_phi_{phi}/k_{k}_l_{l}_theta_{theta}_phi_{phi}.png', 
+                    f'visualization/phi_{phi}/k_{k}_l_{l}_theta_{theta}_phi_{phi}.png', 
                     bbox_inches='tight', pad_inches=0
                 )
                 plt.close()
