@@ -34,8 +34,10 @@ def liaw_et_al(ellipse_x, ellipse_y, a, b, angle_reverse):
     )
     
     liaw_angle = 90 - np.degrees(np.arcsin(np.tan(np.radians(angle_between_pixels))))
+    vertex_point = [vertex_point_1, vertex_point_2]
+    co_vertex_point = [co_vertex_point_1, co_vertex_point_2]
 
-    return liaw_angle, vertex_point_1, vertex_point_2, co_vertex_point_1, co_vertex_point_2
+    return liaw_angle, vertex_point, co_vertex_point
 
 
 def expectation_maximization(landmark_proj):

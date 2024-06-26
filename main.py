@@ -65,7 +65,7 @@ def main(args):
             rotation_matrix_z_reverse = rotation_matrix(-np.deg2rad(phi), 'z-axis')
             rotated_landmark_proj = landmark_proj @ rotation_matrix_z_reverse
 
-            ellipse, ellipse_reverse, y_solutions, theta_ellipse = calculate_ellipse(H, h, r, k, l, theta, phi, landmark_proj, rotated_landmark_proj, ellipse, ellipse_reverse)
+            ellipse, ellipse_reverse, y_solutions, theta_ellipse = calculate_ellipse(H, h, r, k, l, theta, phi, landmark_proj, rotated_landmark_proj)
             calculated_theta.append(theta_ellipse)
 
             (ellipse_x, ellipse_y), (minor, major), angle = ellipse

@@ -8,12 +8,15 @@ def objective_function():
 
 
 def optimize_theta_phi():
-    bounds = [(-180, 180), (-180, 180)]
-    initial_guess = [np.random.uniform(-180, 180), np.random.uniform(-180, 180)]
+    bounds = [(-90, 90), (-180, 180)]
+    initial_guess = [np.random.uniform(-90, 90), np.random.uniform(-180, 180)]  # theta, phi
 
     result = least_squares(
         objective_function, 
         initial_guess,
+        args = (
+            ellipse_gt, 
+        )
         bounds=bounds
     )
 

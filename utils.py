@@ -50,7 +50,7 @@ def project_coordinates(ratio, coordinate, n_landmarks):
     return coordinate_projected
 
 
-def calculate_ellipse(H, h, r, k, l, theta, phi, landmark_proj, rotated_landmark_proj, ellipse, ellipse_reverse):
+def calculate_ellipse(H, h, r, k, l, theta, phi, landmark_proj, rotated_landmark_proj):
     # Calculate least square ellipse from the projection using cv2 fitellipse
     ellipse = cv2.fitEllipse(np.array(landmark_proj[:, :2], dtype=np.float32))
     (ellipse_x, ellipse_y), (minor, major), angle = ellipse
